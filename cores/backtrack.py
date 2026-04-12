@@ -8,12 +8,6 @@ import torch
 import torch.nn as nn
 
 
-def aggregate_conv_influence(conv: nn.Conv2d) -> torch.Tensor:
-    """Shape (out_channels, in_channels)."""
-    w = conv.weight.data.abs()
-    return w.sum(dim=(2, 3))
-
-
 def extract_fc_weight(model: nn.Module) -> torch.Tensor:
     """Return F with shape (num_classes, dim) for nn.Linear."""
     if not hasattr(model, "fc") or not isinstance(model.fc, nn.Linear):
@@ -55,7 +49,7 @@ def propagate_to_prev_stage(
     bar: bool,
 ) -> torch.Tensor:
     """
-    W: (out_ch, in_ch) aggregated influence from stage below -> above.
+    W: (out_ch, in_ch) inter-layer weights (Eq. 8: spatial max or min per channel pair).
     child_indices: subset of rows (output channels at deeper stage).
     """
     device = W.device
@@ -74,21 +68,29 @@ def backtrack_kernel_indices(
     """
     Returns lists `bar` and `under` of length = 1 + len(stage_boundary_convs), shallow -> deep,
     matching hooked conv layers (4 for ResNet when three stage matrices are used + FC stage).
+
+    Intermediate stages use Eq. 8: spatial max(K) for the high-confidence path (bar),
+    spatial min(K) for the low-confidence path (under).
     """
     device = fc_weight.device
     bar_deep, under_deep, _, _ = select_last_layer_indices(fc_weight, probs, fraction)
 
-    mats = [aggregate_conv_influence(c).to(device) for c in stage_boundary_convs]
-    mats_rev = list(reversed(mats))
+    convs_rev = list(reversed(list(stage_boundary_convs)))
 
     bar_seq: List[torch.Tensor] = []
     under_seq: List[torch.Tensor] = []
     cur_b, cur_u = bar_deep.clone(), under_deep.clone()
-    for W in mats_rev:
+
+    for conv in convs_rev:
         bar_seq.append(cur_b)
         under_seq.append(cur_u)
-        cur_b = propagate_to_prev_stage(W, cur_b, fraction, bar=True)
-        cur_u = propagate_to_prev_stage(W, cur_u, fraction, bar=False)
+
+        W_max = conv.weight.data.amax(dim=(2, 3)).to(device)
+        W_min = conv.weight.data.amin(dim=(2, 3)).to(device)
+
+        cur_b = propagate_to_prev_stage(W_max, cur_b, fraction, bar=True)
+        cur_u = propagate_to_prev_stage(W_min, cur_u, fraction, bar=False)
+
     bar_seq.append(cur_b)
     under_seq.append(cur_u)
     bar_seq.reverse()
