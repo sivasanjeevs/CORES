@@ -19,17 +19,17 @@ def layer_score(
     eps: float = 1e-3,
 ) -> torch.Tensor:
     """
-    S(R̄ ∪ R̲) = RM+(R̄)^λ1 · RM-(R̲)^λ1 · RF+(R̄)^λ2 · RF-(R̲)^λ2
-    Shape (B,).
+    Calculated in Log-Space to prevent float32 underflow from power of 10.
+    log(S) = λ1*log(RM+) + λ1*log(RM-) + λ2*log(RF+) + λ2*log(RF-)
     """
     rmp, rmn, rfp, rfn = cores_layer_metrics(R_bar, R_under, tau_plus, tau_minus)
-    # Large λ1 needs a floor before pow to avoid all-zero products on random weights.
-    return (
-        (rmp + eps).pow(lambda1)
-        * (rmn + eps).pow(lambda1)
-        * (rfp + eps).pow(lambda2)
-        * (rfn + eps).pow(lambda2)
+    log_S = (
+        lambda1 * torch.log(rmp + eps)
+        + lambda1 * torch.log(rmn + eps)
+        + lambda2 * torch.log(rfp + eps)
+        + lambda2 * torch.log(rfn + eps)
     )
+    return log_S
 
 
 def aggregate_layers(
@@ -39,8 +39,9 @@ def aggregate_layers(
     return torch.stack(list(layer_scores), dim=0).mean(dim=0)
 
 
-def anomaly_score_from_cores(S: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def anomaly_score_from_cores(log_S: torch.Tensor) -> torch.Tensor:
     """
-    Convert CORES score S (larger often = more ID-like) into an OOD score where **larger = OOD**.
+    Since we are in log space, a higher log_S means it is MORE in-distribution.
+    We return negative log_S so that larger values = more anomalous (OOD).
     """
-    return 1.0 / (S + eps)
+    return -log_S

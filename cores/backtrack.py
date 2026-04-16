@@ -38,7 +38,8 @@ def select_last_layer_indices(
     row_max = F_weight[c_max]
     row_min = F_weight[c_min]
     bar_I = top_fraction_indices(row_max, fraction, largest=True)
-    under_I = top_fraction_indices(row_min, fraction, largest=False)
+    # Equation 6 (FC layer): TopK is used for BOTH paths.
+    under_I = top_fraction_indices(row_min, fraction, largest=True)
     return bar_I, under_I, c_max, c_min
 
 

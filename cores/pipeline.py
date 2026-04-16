@@ -59,7 +59,7 @@ class CoresPipeline:
         shape: Tuple[int, int, int] = (3, 32, 32),
         noise_batches: int = 4,
         batch_size: int = 64,
-        target_fpr: float = 0.01,
+        target_fpr: float = 0.05,
     ) -> CalibrationState:
         self.model.eval()
         h = self._ensure_hook()

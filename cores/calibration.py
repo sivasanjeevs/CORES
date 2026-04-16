@@ -18,9 +18,12 @@ def synthetic_noise_batch(
     """Gaussian or uniform noise, then CIFAR-style normalization (matches ID pipeline)."""
     c, h, w = shape
     if mode == "gaussian":
-        x = torch.randn(batch_size, c, h, w, device=device)
+        # Generate noise in standard image space [0, 1], then apply CIFAR normalization.
+        x = torch.randn(batch_size, c, h, w, device=device) * 0.5 + 0.5
+        x = torch.clamp(x, 0.0, 1.0)
     elif mode == "uniform":
-        x = torch.rand(batch_size, c, h, w, device=device) * 2.0 - 1.0
+        # Uniform noise directly in image bounds [0, 1].
+        x = torch.rand(batch_size, c, h, w, device=device)
     else:
         raise ValueError(mode)
     m = torch.tensor(mean, device=device).view(1, 3, 1, 1)
