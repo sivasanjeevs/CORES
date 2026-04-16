@@ -31,33 +31,6 @@ def seed_everything(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-
-def train_classifier(
-    model: nn.Module,
-    train_loader,
-    device: torch.device,
-    epochs: int = 5,
-    lr: float = 0.1,
-) -> None:
-    model.train()
-    criterion = nn.CrossEntropyLoss()
-    opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
-    sched = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
-    for ep in range(epochs):
-        total, correct = 0, 0
-        for x, y in tqdm(train_loader, desc=f"train ep{ep+1}"):
-            x, y = x.to(device), y.to(device)
-            opt.zero_grad()
-            logits = model(x)
-            loss = criterion(logits, y)
-            loss.backward()
-            opt.step()
-            total += y.size(0)
-            correct += (logits.argmax(1) == y).sum().item()
-        sched.step()
-        print(f"  epoch {ep+1}: acc={correct/total:.4f}")
-
-
 def collect_scores(
     pipeline: CoresPipeline,
     loader,
@@ -84,7 +57,7 @@ def main() -> None:
     p.add_argument("--id", default="cifar10", choices=["cifar10", "cifar100"])
     p.add_argument("--ood", default=["svhn"], nargs="+", choices=["svhn", "textures", "lsun_resize"])
     p.add_argument("--arch", default="resnet18", choices=["resnet18", "wideresnet_28_10"])
-    p.add_argument("--train-epochs", type=int, default=0, help="Fine-tune classifier on ID data (0=skip)")
+    # p.add_argument("--train-epochs", type=int, default=0, help="Fine-tune classifier on ID data (0=skip)")
     p.add_argument("--calib-batches", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--eval-batch-cap", type=int, default=None, help="Limit batches per split for quick runs")
@@ -108,45 +81,18 @@ def main() -> None:
     checkpoint_mode = (args.checkpoint or "auto").lower()
     if checkpoint_mode != "none":
         if checkpoint_mode == "auto":
-            if args.id != "cifar10" or args.arch != "resnet18":
-                raise ValueError(
-                    "Checkpoint auto-download is only wired for the paper setting: "
-                    "`--id cifar10` + `--arch resnet18`. "
-                    "For other combinations, pass an explicit `--checkpoint`."
-                )
             ckpt_path = Path(__file__).resolve().parent / "resnet18_cifar10_ready.pth"
-            if not ckpt_path.exists():
-                # Download + key conversion happens only when the file is missing.
-                try:
-                    ckpt_path = download_resnet18_cifar10_ready(ckpt_path)
-                except Exception as e:  # pragma: no cover
-                    raise RuntimeError(
-                        f"Failed to auto-download checkpoint. Missing: {ckpt_path}\n"
-                        f"Either fix your network or run `python model.py` once to create it, then re-run with:\n"
-                        f"  --checkpoint {ckpt_path.as_posix()}"
-                    ) from e
         else:
             ckpt_path = Path(args.checkpoint)
-            if not ckpt_path.exists():
-                raise FileNotFoundError(f"--checkpoint not found: {ckpt_path.as_posix()}")
 
         sd = torch.load(ckpt_path.as_posix(), map_location=device)
+        sd = {k.replace('downsample', 'shortcut'): v for k, v in sd.items()}
         model.load_state_dict(sd, strict=True)
         print(f"Loaded pretrained checkpoint: {ckpt_path.as_posix()}")
 
     test_id = get_id_dataloader(
         args.id, args.data_root, train=False, batch_size=args.batch_size, download=True
     )
-
-    if args.train_epochs > 0:
-        train_loader = get_id_dataloader(
-            args.id, args.data_root, train=True, batch_size=args.batch_size, download=True
-        )
-    else:
-        train_loader = None
-
-    if args.train_epochs > 0:
-        train_classifier(model, train_loader, device, epochs=args.train_epochs)
 
     pipe = CoresPipeline(model)
     print("Calibrating thresholds on synthetic noise...")
