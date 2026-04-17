@@ -54,10 +54,10 @@ def collect_scores(
 def main() -> None:
     p = argparse.ArgumentParser(description="CORES OOD detection")
     p.add_argument("--data-root", type=Path, default=Path("./data"))
-    p.add_argument("--id", default="cifar10", choices=["cifar10", "cifar100"])
+    p.add_argument("--id", default="cifar10", choices=["cifar10"])
     p.add_argument("--ood", default=["svhn"], nargs="+", choices=["svhn", "textures", "lsun_resize"])
-    p.add_argument("--arch", default="resnet18", choices=["resnet18", "wideresnet_28_10"])
-    # p.add_argument("--train-epochs", type=int, default=0, help="Fine-tune classifier on ID data (0=skip)")
+    p.add_argument("--arch", default="resnet18", choices=["resnet18"])
+    p.add_argument("--train-epochs", type=int, default=0, help="Fine-tune classifier on ID data (0=skip)")
     p.add_argument("--calib-batches", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--eval-batch-cap", type=int, default=None, help="Limit batches per split for quick runs")
@@ -91,7 +91,7 @@ def main() -> None:
         print(f"Loaded pretrained checkpoint: {ckpt_path.as_posix()}")
 
     test_id = get_id_dataloader(
-        args.id, args.data_root, train=False, batch_size=args.batch_size, download=True
+        args.id, args.data_root, batch_size=args.batch_size, download=True
     )
 
     pipe = CoresPipeline(model)

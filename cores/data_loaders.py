@@ -10,41 +10,12 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
 
-def cifar_transform_train() -> transforms.Compose:
-    return transforms.Compose(
-        [
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-        ]
-    )
-
-
 def cifar_transform_test() -> transforms.Compose:
-    return transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-        ]
-    )
-
-
-def svhn_transform() -> transforms.Compose:
-    return transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-        ]
-    )
-
-
-def imagenet_norm_transform() -> transforms.Compose:
     return transforms.Compose(
         [
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
         ]
     )
 
@@ -52,36 +23,22 @@ def imagenet_norm_transform() -> transforms.Compose:
 def get_id_dataloader(
     name: str,
     root: Path,
-    train: bool,
     batch_size: int,
     num_workers: int = 2,
     download: bool = True,
     subset: Optional[int] = None,
 ) -> DataLoader:
-    name = name.lower()
     root = Path(root)
-    if name.startswith("imagenet"):
-        raise NotImplementedError(
-            "ImageNet-1k ID data is not wired in this repo. Use CIFAR-10/100 for 32×32 experiments "
-            "or add an ImageFolder-based loader and set num_classes=1000."
-        )
 
-    if name == "cifar10":
-        ds = datasets.CIFAR10(
-            root,
-            train=train,
-            download=download,
-            transform=cifar_transform_train() if train else cifar_transform_test(),
-        )
-    elif name == "cifar100":
-        ds = datasets.CIFAR100(
-            root,
-            train=train,
-            download=download,
-            transform=cifar_transform_train() if train else cifar_transform_test(),
-        )
-    else:
+    if name.lower() != "cifar10":
         raise ValueError(f"Unsupported ID dataset: {name}")
+
+    ds = datasets.CIFAR10(
+        root,
+        train=False,
+        download=download,
+        transform=cifar_transform_test(),
+    )
 
     if subset is not None and subset < len(ds):
         g = torch.Generator().manual_seed(0)
@@ -91,7 +48,7 @@ def get_id_dataloader(
     return DataLoader(
         ds,
         batch_size=batch_size,
-        shuffle=train,
+        shuffle=False,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
     )
@@ -114,7 +71,7 @@ def get_ood_dataloader(
             root / "svhn",
             split="test",
             download=download,
-            transform=svhn_transform(),
+            transform=cifar_transform_test(),
         )
     elif name in ("textures", "dtd"):
         ds = datasets.DTD(
@@ -128,7 +85,7 @@ def get_ood_dataloader(
             ds = datasets.LSUN(
                 root / "lsun",
                 classes="bedroom_val",
-                transform=imagenet_norm_transform(),
+                transform=cifar_transform_test(),
             )
         except Exception:
             raise RuntimeError(
@@ -153,6 +110,4 @@ def get_ood_dataloader(
 
 
 def dataset_num_classes(id_name: str) -> int:
-    if id_name.lower() == "cifar100":
-        return 100
     return 10
